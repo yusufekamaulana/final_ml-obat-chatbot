@@ -1,0 +1,58 @@
+# ========== FRONTEND (Next.js) ==========
+# dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+
+# testing
+frontend/coverage/
+
+# next.js
+frontend/.next/
+frontend/out/
+
+# production
+frontend/build/
+
+# misc
+frontend/.DS_Store
+frontend/*.pem
+
+# debug
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# env files
+frontend/.env*
+frontend/.vercel
+
+# typescript
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ========== BACKEND (Python) ==========
+backend/venv/
+backend/.env*
+backend/__pycache__/
+backend/*.pyc
+backend/app/chatbot/embedding_model
+backend/app/chatbot/halodoc_db
+
+# ========== GLOBAL (umum) ==========
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+key.txt
