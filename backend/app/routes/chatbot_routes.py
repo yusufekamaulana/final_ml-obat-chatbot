@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
 
-from app.chatbot.chatbot import graph, init_components
+from app.chatbot.chatbot import graph, init_components, start_qa, resume_qa
 from app.models.chat_model import ChatMessage
 from app.database import db
 from app.utils.security import get_current_user
@@ -16,21 +16,39 @@ chat_collection = db["chat_history"]
 
 class ChatRequest(BaseModel):
     query: str
+    threadid: Optional[str] = None
 
 @router.post("/", summary="Tanya ke chatbot")
 async def ask_chatbot(
     req: ChatRequest,
     user_id: str = Depends(get_current_user)
 ):
-    state = {
-        "df": df,
-        "lexical_retrievers": lexical_retrievers,
-        "semantic_retriever": semantic_retriever,
-        "query_llm": query_llm,
-        "llm": llm,
-        "question": req.query
-    }
-    result = graph.invoke(state)
+    if req.threadid:
+        config = {
+            "configurable": {
+                "thread_id":req.threadid,
+                "query_llm": query_llm,
+                "llm": llm,
+                "df": df,
+                "lexical_retrievers": lexical_retrievers,
+                "semantic_retriever": semantic_retriever
+            }
+        }
+
+        result = resume_qa(question=req.query, graph=graph, config=config)
+    else:
+        config = {
+            "configurable": {
+                "thread_id":uuid4(),
+                "query_llm": query_llm,
+                "llm": llm,
+                "df": df,
+                "lexical_retrievers": lexical_retrievers,
+                "semantic_retriever": semantic_retriever
+            }
+        }
+
+        result = start_qa(question=req.query, graph=graph, config=config)
 
     now = datetime.utcnow()
     session_id = f"session-{user_id}"
@@ -44,24 +62,39 @@ async def ask_chatbot(
         timestamp=now
     )
 
-    bot_msg = ChatMessage(
-        id=uuid4(),
-        session_id=session_id,
-        user_id=user_id,
-        role="assistant",
-        content=result["answer"],
-        timestamp=now
-    )
+    if "__interrupt__" in result.keys(): 
+        bot_msg = ChatMessage(
+            id=uuid4(),
+            session_id=session_id,
+            user_id=user_id,
+            role="assistant",
+            content=result["__interrupt__"][0].value,
+            timestamp=now
+        )
+    else:
+        bot_msg = ChatMessage(
+            id=uuid4(),
+            session_id=session_id,
+            user_id=user_id,
+            role="assistant",
+            content=result["answer"],
+            timestamp=now
+        )
 
     await chat_collection.insert_many([
         {**user_msg.dict(), "id": str(user_msg.id)},
         {**bot_msg.dict(), "id": str(bot_msg.id)}
     ])
 
-    return {
-        "answer": result["answer"],
-        "context": [doc.page_content for doc in result["context"]]
-    }
+    if "__interrupt__" in result.keys():
+        return {
+            "answer": result["__interrupt__"][0].value,
+            "thread_id": config["configurable"]["thread_id"]
+        }
+    else:
+        return {
+            "answer": result["answer"]
+        }
 
 @router.get("/history", response_model=List[ChatMessage], summary="Ambil riwayat chat berdasarkan session_id")
 async def get_chat_history(

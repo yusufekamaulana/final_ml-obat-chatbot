@@ -11,6 +11,7 @@ export function ChatbotLayout() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [threadId, setThreadId] = useState<string | null>(null)
 
   function getCookie(name: string) {
     const value = `; ${document.cookie}`;
@@ -23,6 +24,10 @@ export function ChatbotLayout() {
   typeof window !== "undefined" ? getCookie("token") : null;
 
   useEffect(() => {
+    const savedThreadId = localStorage.getItem("threadId")
+    if (savedThreadId) {
+      setThreadId(savedThreadId)
+    }
     fetchChatHistory()
   }, [])
 
@@ -73,6 +78,13 @@ export function ChatbotLayout() {
         body: JSON.stringify({ query: input }),
       })
       const data = await res.json()
+      if (data.thread_id) {
+        setThreadId(data.thread_id)
+        localStorage.setItem("threadId", data.thread_id)
+      } else {
+        setThreadId(null)
+        localStorage.removeItem("threadId")
+      }
       const botMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
