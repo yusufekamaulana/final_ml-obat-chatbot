@@ -44,6 +44,8 @@ backend/__pycache__/
 backend/*.pyc
 backend/app/chatbot/embedding_model
 backend/app/chatbot/halodoc_db
+backend/app/chatbot/chatbot_test.ipynb
+backend/app/chatbot/ground_truth.csv
 
 # ========== GLOBAL (umum) ==========
 *.pyc

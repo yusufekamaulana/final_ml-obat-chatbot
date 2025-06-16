@@ -39,13 +39,13 @@ def identify_facts(llm, query):
                 2. Instructions: Instructions on when and how the object should be used (eg: After meals).
                 3. Dosage: Information on the recommended dosage or amount of consumption, can be based on age or condition.
                 4. Side Effects: Side effects that may arise after taking the object.
-                5. Category: Legal category of the drug, such as: Over-the-Counter Drugs — can be purchased without a prescription, Limited Over-the-Counter Drugs — can be purchased freely with certain restrictions, Prescription Drugs — can only be purchased with a prescription, Consumer Products — not prescription drugs (such as mild itch ointments, etc.).
+                5. Category: Legal category of the drug, it must only include: Over-the-Counter Drugs, Limited Over-the-Counter Drugs, Prescription Drugs, Consumer Products and nothing else since it's a categorycal fact.
                 6. General Indications: General uses of the object, namely to treat certain symptoms or diseases.
                 7. Shape and size: The shape and size of the product packaging (eg: Box, Bottle @ 15 ml).
                 8. Composition: The content or active substance in the object.
                 9. Contraindications: Situations or conditions that prevent the object from being used (eg: severe liver dysfunction).
                 10. Manufacturer: The name of the company or factory that produces the object.
-                11. Warning: Special warnings before using this object, such as prohibitions on use in certain conditions.
+                11. Warning: Special warnings before using this object, such as prohibitions on use in certain conditions, how to handle the object, and doctor prescription requirements.
                 12. Description: A brief explanation of the object in general, often including the purpose and how the drug works.
 
                 Example:
@@ -68,13 +68,14 @@ def identify_facts(llm, query):
             "role": "user",
             "content": query
         }],
-        model="llama3-8b-8192",
+        model="llama-3.1-8b-instant",
         temperature=0,
     )
 
-    answer = query_result.choices[0].message.content
+    answer = query_result.choices[0].message.content 
     print(answer)
-    answer = re.findall(r"\{.*?\}(?=(?:\n|$))", answer, re.DOTALL)[-1]
+    answer = re.findall(r"\{.*?\}(?=(?:\n|$|\.))", answer, re.DOTALL)[-1]
+    print(answer)
     answer = ast.literal_eval(answer)
 
     desired_fact = answer["Desired fact"]
@@ -192,19 +193,21 @@ def resume_qa(question, graph, config):
     result = graph.invoke(Command(resume=question), config=config)
     return result
 
-def init_components():
+def init_components(df_path, embedding_db_path, embedding_model=None, embedding_model_path=None):
     load_dotenv()
-    df = pd.read_csv("./app/chatbot/scrapping_auto_df.csv")
+    df = pd.read_csv(df_path) #./app/chatbot/scrapping_auto_df.csv
     col_to_embed = [
         "Aturan Pakai", "Dosis", "Efek Samping", "Golongan Produk", "Indikasi Umum",
         "Kemasan", "Komposisi", "Kontra Indikasi", "Perhatian", "Deskripsi"
     ]
     create_retriever = CreateRetriever(df, col_to_embed)
     lexical_retrievers = create_retriever.create_lexical_retriever()
-    semantic_retriever = create_retriever.create_semantic_retriever("./app/chatbot/halodoc_db", "intfloat/multilingual-e5-large-instruct")
-    # semantic_retriever = create_retriever.create_semantic_retriever("./app/chatbot/halodoc_db", "./app/chatbot/embedding_model/e5")
+    if embedding_model_path:
+        semantic_retriever = create_retriever.create_semantic_retriever(embedding_db_path, embedding_model_path) #./app/chatbot/halodoc_db || ./app/chatbot/embedding_model/e5
+    else:
+        semantic_retriever = create_retriever.create_semantic_retriever(embedding_db_path, embedding_model) #./app/chatbot/halodoc_db || intfloat/multilingual-e5-large-instruct
     query_llm = Groq(api_key=os.getenv("GROQ_KEY"))
-    llm = ChatGroq(model="llama3-8b-8192", temperature=0, api_key=os.getenv("GROQ_KEY"))
+    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, api_key=os.getenv("GROQ_KEY"))
     return df, lexical_retrievers, semantic_retriever, query_llm, llm
 
 
