@@ -229,7 +229,7 @@ if __name__ == "__main__":
         }
 
         result = graph.invoke(state)
-        print(f'Context: {result["context"]}\\n\\n')
-        print(f'Answer: {result["answer"]}')
+        # print(f'Context: {result["context"]}\\n\\n')
+        # print(f'Answer: {result["answer"]}')
     else:
         print("Input query")
