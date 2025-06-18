@@ -133,6 +133,7 @@ def _retrieve_or_not_(state: State, config: dict):
         "question": state["question"]
     })
     response = config["configurable"]["llm"].invoke(messages)
+    print(response.content)
     if 'yes' in response.content:
         return 'identify_facts'
     else:
