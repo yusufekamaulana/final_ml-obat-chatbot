@@ -23,6 +23,7 @@ async def ask_chatbot(
     req: ChatRequest,
     user_id: str = Depends(get_current_user)
 ):
+    print(req.threadid)
     if req.threadid:
         config = {
             "configurable": {
@@ -86,11 +87,25 @@ async def ask_chatbot(
         {**bot_msg.dict(), "id": str(bot_msg.id)}
     ])
 
+    print(config["configurable"]["thread_id"])
+    print(result)
+
     if "__interrupt__" in result.keys():
-        return {
-            "answer": result["__interrupt__"][0].value,
-            "thread_id": config["configurable"]["thread_id"]
-        }
+        if result["__interrupt__"][0].value == "no_fact":
+            return {
+                "answer": "Adakah deskripsi obat yang dapat membantu saya mengidentifikasi obat yang anda maksud?",
+                "thread_id": config["configurable"]["thread_id"]
+            }
+        if result["__interrupt__"][0].value == "ask_revision":
+            return {
+                "answer": result["answer"],
+                "thread_id": config["configurable"]["thread_id"]
+            }
+        if result["__interrupt__"][0].value == "input_revision":
+            return {
+                "answer": f"Apakah benar anda mencari obat dengan deskripsi berikut? {str(result["fact_provided"])}",
+                "thread_id": config["configurable"]["thread_id"]
+            }
     else:
         return {
             "answer": result["answer"]

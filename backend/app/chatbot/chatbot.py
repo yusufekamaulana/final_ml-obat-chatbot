@@ -98,13 +98,30 @@ def identify_facts(llm, query):
 
     return desired_fact, fact_provided
 
-def revise_facts(llm, query):
+def revise_facts(llm, fact_provided, query):
+    rev_dct = {
+        "Nama Obat": "Drug Name",
+        "Aturan Pakai": "Instructions",
+        "Dosis": "Dosage",
+        "Efek Samping": "Side Effects",
+        "Golongan Produk": "Category",
+        "Indikasi Umum": "General Indications",
+        "Kemasan": "Shape and size",
+        "Komposisi": "Composition",
+        "Kontra Indikasi": "Contraindications",
+        "Manufaktur": "Manufacturer",
+        "Perhatian": "Warning",
+        "Deskripsi": "Description"
+    }
+
+    fact_provided = {rev_dct[fact_type]: fact for fact_type, fact in fact_provided.items() if fact_type in rev_dct.keys()}
+
     query_result = llm.chat.completions.create(
         messages=[{
             "role": "system",
             "content": 
             """
-                You will be given a prompt from the user containing a revision about drug facts or medical related object.
+                You will be given a dictionary and a prompt from the user containing a revision about drug facts or medical related object.
                 Your job is to revise the facts that can help determine the object the user is referring to, your job is not to answer the question.
                 The types of informations and their explanations are:
                 1. Drug Name: The name of the drug as listed on the site (eg: Emturnas Drops 15 ml).
@@ -121,25 +138,24 @@ def revise_facts(llm, query):
                 12. Description: A brief explanation of the drug in general, often including the purpose and how the drug works.
 
                 Example:
-                Original:
-                Apa efek samping, aturan pakai, dan siapa yang membuat obat untuk meredakan demam yang bernama panadol.
+                {'Fact provided': {'General Indications': 'untuk hypersensitivitas', 'Drug Name': 'panadol'}}
+                Mengobati hypersensitivitas bukan kegunaan dari obatnya tapi obatnya bukan untuk orang yang hypersensitivitas dan panadol itu bukan namanya tapi namanya paracetamol.
 
                 Provide the same analysis steps as the steps below:
-                1. Translate the prompt to english. In this case 'What are the side effects, instructions, and who makes the drug to relieve fever called panadol.'
-                2. Identify the type of informations desired by the user and explain your reasoning. if there is no information desired by the user then keep it empty. In this case, because the user asks for side effects, instructions, and who makes it, the type of informations desired is [Side Effects, Instructions, Manufacturer].
-                3. Identify the information provided by the user that can help identify the object the user is referring to complete it with a verb. In this case, because the user mentioned that the medicine can relieve fever and is called panadol, the information that can help identify the medicine is [medicine to relieve fever, medicine called panadol]
-                4. Determine the type of informations and explain your reasoning from the information that has been identified by looking at the explanation of the 12 types of information if the information doesn't fit with the 12 mentioned then don't list it. Make sure the user is sure of the informations and the user's intention is not to confirm the informations. Because the information 'medicine to relieve fever' is the general use of the medicine and the information 'medicine called panadol' is the name of the medicine, the type of each information is [to relieve fever: General Indications, panadol: Drug Name].
-                5. Create a dictionary that contains the type of fact the user wants, the type of fact and the fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'to relieve fever', 'Drug Name': 'panadol'}}
-                6. Translate the information (not the type) provided by the user into indonesian again but not the desired fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Drug Name': 'panadol'}}
-                7. Remember not to include notes or additions to the output, it must remain a dictionary.
+                1. Translate the prompt to english. In this case 'Treating hypersensitivity is not the use of the drug but the drug is not for people who are hypersensitive and Panadol is not the name but Paracetamol.'
+                2. Identify the type of informations that needs to be revised the type of information have to be inside the dictionary and provide your reasoning. In this case since the user says 'Treating hypersensitivity is not the use of the drug' and 'Panadol is not the name' that means the type of fact that need to be revised is ['General Indications', 'Drug Name']
+                3. From the list of type of fact, identify which type of fact where the thing that needs to be changed is the type and identify where the thing that needs to be changed is the fact and provide your reasoning. In this case, because the user mentioned that 'Mengobati hypersensitivitas bukan kegunaan dari obatnya tapi obatnya bukan untuk orang yang hypersensitivitas' that means that the type of fact need to be changed and since the user mentioned that 'Panadol is not the name but Paracetamol' that means that the fact needs to be changed so ['General Indications': type, 'Drug Name': fact]
+                4. Change the type of fact or the fact according to the list of things that needs to be changed with the preferred revision, make it a dictionary, and provide your reasoning. In this case since General Indications needs to be changed to Contraindications and panadol needs to be changed to paracetamol {'Fact provided': {'Contraindications': 'not for hypersensitivity', 'Drug Name': 'paracetamol'}}.
+                5. Translate the information (not the type) provided by the user into indonesian again. In this case {'Fact provided': {'Contraindications': 'tidak untuk hypersensitivitas', 'Drug Name': 'paracetamol'}}
+                6. Remember not to include notes or additions to the output, it must remain a dictionary.
 
-                Output: {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Drug Name': 'panadol'}}
+                Output: {'Fact provided': {'Contraindications': 'tidak untuk hypersensitivitas', 'Drug Name': 'paracetamol'}}
                 Final output format: JSON-style dictionary as above.
                 Do not answer the user's question, just identify the informations.
             """
         }, {
             "role": "user",
-            "content": query
+            "content": f"{{'Fact provided': {fact_provided}}}\n{query}"
         }],
         model="llama-3.1-8b-instant",
         temperature=0,
@@ -149,7 +165,6 @@ def revise_facts(llm, query):
     answer = re.findall(r"\{.*?\}(?=(?:\n|$|\.))", answer, re.DOTALL)[-1]
     answer = ast.literal_eval(answer)
 
-    desired_fact = answer["Desired fact"]
     fact_provided = answer["Fact provided"]
 
     dct = {
@@ -169,7 +184,7 @@ def revise_facts(llm, query):
 
     fact_provided = {dct[fact_type]: fact for fact_type, fact in fact_provided.items() if fact_type in dct.keys()}
 
-    return desired_fact, fact_provided
+    return fact_provided
 
 def hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fact_provided, k):
     jaro_winkler_ranking = JaroWinklerRanking(df)
@@ -221,7 +236,7 @@ def _answer_non_medical_(state: State, config: dict):
     """}
 
 def _no_fact_(state: State, config: dict):
-    question = interrupt("Adakah deskripsi yang dapat membantu saya untuk mencari obat yang ada maksud?")
+    question = interrupt("no_fact")
     return {"question": question}
 
 def _identify_facts_(state: State, config: dict):
@@ -259,18 +274,19 @@ def _generate_(state: State, config: dict):
     return {"answer": response.content}
 
 def _ask_validation_(state: State, config: dict):
-    answer = interrupt("Apakah anda puas dengan jawabannya?")
+    answer = interrupt("ask_revision")
 
-    if answer == "yes":
+    if answer == "tidak":
         return "validate"
     else:
+        state["answer"] = "🌟 Terima kasih sudah ngobrol bareng MediBot! 🩺💙"
         return "end"
     
 def _validate_(state: State, config: dict):
-    revised = interrupt("Tuliskan revisi")
+    revised = interrupt("input_revision")
     query_llm = config["configurable"]["query_llm"]
-    desired_fact, fact_provided = revise_facts(query_llm, revised)
-    return {"desired_fact": desired_fact, "fact_provided": fact_provided}
+    fact_provided = revise_facts(query_llm, state["fact_provided"], revised)
+    return {"question": revised, "fact_provided": fact_provided}
 
 from langgraph.graph import START, StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -283,12 +299,14 @@ graph_builder.add_node("answer_non_medical", _answer_non_medical_)
 graph_builder.add_node("no_fact", _no_fact_)
 graph_builder.add_node("retrieve", _retrieve_)
 graph_builder.add_node("generate", _generate_)
+graph_builder.add_node("validate", _validate_)
 graph_builder.add_conditional_edges(START, _retrieve_or_not_, {"identify_facts": "identify_facts", "answer_non_medical": "answer_non_medical"})
 graph_builder.add_edge("answer_non_medical", END)
 graph_builder.add_conditional_edges("identify_facts", _retrieve_or_ask_again_, {"retrieve": "retrieve", "no_fact": "no_fact"})
 graph_builder.add_edge("no_fact", "identify_facts")
 graph_builder.add_edge("retrieve", "generate")
-graph_builder.add_edge("generate", END)
+graph_builder.add_conditional_edges("generate", _ask_validation_, {"validate": "validate", "end": END})
+graph_builder.add_edge("validate", "retrieve")
 
 client = MongoClient("mongodb://localhost:27017")
 db = client["langgraph"]
