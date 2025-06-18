@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import Cookies from "js-cookie"
+import { fetchWithFallback } from "@/lib/api"
 
 type User = {
   name: string
@@ -18,15 +19,11 @@ export function useUser() {
       return
     }
 
-    fetch("http://localhost:8000/auth/me", {
+    fetchWithFallback("/auth/me", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
-      .then((res) => {
-        if (!res.ok) throw new Error("Unauthorized")
-        return res.json()
-      })
       .then((data) => {
         setUser(data)
       })

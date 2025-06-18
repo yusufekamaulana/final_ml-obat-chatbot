@@ -56,8 +56,8 @@ export const BoxReveal = ({
         transition={{ duration: duration ? duration : 0.5, ease: "easeIn" }}
         style={{
           position: "absolute",
-          top: 4,
-          bottom: 4,
+          top: 0,
+          bottom: 0,
           left: 0,
           right: 0,
           zIndex: 20,

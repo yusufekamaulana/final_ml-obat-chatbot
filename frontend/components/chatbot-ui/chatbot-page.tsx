@@ -6,6 +6,7 @@ import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { Card, CardContent } from "@/components/ui/card"
 import { type Message } from "@/components/ui/chat-message"
+import { fetchWithFallback } from "@/lib/api"
 
 export function ChatbotLayout() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -14,14 +15,14 @@ export function ChatbotLayout() {
   const [threadId, setThreadId] = useState<string | null>(null)
 
   function getCookie(name: string) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop()?.split(";").shift();
-    return null;
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) return parts.pop()?.split(";").shift()
+    return null
   }
 
   const token =
-  typeof window !== "undefined" ? getCookie("token") : null;
+    typeof window !== "undefined" ? getCookie("token") : null
 
   useEffect(() => {
     const savedThreadId = localStorage.getItem("threadId")
@@ -34,16 +35,12 @@ export function ChatbotLayout() {
   const fetchChatHistory = async () => {
     if (!token) return
     try {
-      const res = await fetch("http://localhost:8000/chat/history", {
-        // headers: {
-        //   Authorization: `Bearer ${token}`,
-        // },
+      const data = await fetchWithFallback("/chat/history", {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
-        }
+        },
       })
-      const data = await res.json()
       const formatted = data.flatMap((msg: any): Message[] => [
         { id: `u-${msg._id}`, role: "user", content: msg.question },
         { id: `a-${msg._id}`, role: "assistant", content: msg.answer },
@@ -69,7 +66,7 @@ export function ChatbotLayout() {
     setIsLoading(true)
 
     try {
-      const res = await fetch("http://localhost:8000/chat", {
+      const data = await fetchWithFallback("/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -77,7 +74,7 @@ export function ChatbotLayout() {
         },
         body: JSON.stringify({ query: input }),
       })
-      const data = await res.json()
+
       if (data.thread_id) {
         setThreadId(data.thread_id)
         localStorage.setItem("threadId", data.thread_id)
@@ -85,6 +82,7 @@ export function ChatbotLayout() {
         setThreadId(null)
         localStorage.removeItem("threadId")
       }
+
       const botMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -100,7 +98,8 @@ export function ChatbotLayout() {
 
   return (
     <Card className="flex flex-col h-full overflow-hidden">
-      <CardContent className="flex flex-col flex-1 p-0 h-full overflow-x-hidden">
+      {/* <CardContent className="flex flex-col flex-1 p-0 h-full overflow-x-hidden"> */}
+      <CardContent className="flex flex-col flex-1 p-0 h-full overflow-x-hidden pb-10">
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-2">
           <ChatMessages messages={messages}>
             <MessageList messages={messages} isTyping={isLoading} />
@@ -113,9 +112,6 @@ export function ChatbotLayout() {
             onChange={(e) => setInput(e.target.value)}
             isGenerating={isLoading}
             stop={() => setIsLoading(false)}
-            allowAttachments
-            files={[]}
-            setFiles={() => {}}
           />
         </form>
       </CardContent>
