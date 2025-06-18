@@ -35,18 +35,18 @@ def identify_facts(llm, query):
                 You will be given a prompt from the user containing questions about drug facts or medical related object.
                 Your job is to identify facts that can help determine the object the user is referring to, your job is not to answer the question.
                 The types of informations and their explanations are:
-                1. Object Name: The name of the object as listed on the site (eg: Emturnas Drops 15 ml).
-                2. Instructions: Instructions on when and how the object should be used (eg: After meals).
+                1. Drug Name: The name of the drug as listed on the site (eg: Emturnas Drops 15 ml).
+                2. Instructions: Instructions on when and how the drug should be used (eg: After meals).
                 3. Dosage: Information on the recommended dosage or amount of consumption, can be based on age or condition.
-                4. Side Effects: Side effects that may arise after taking the object.
-                5. Category: Legal category of the drug, such as: Over-the-Counter Drugs — can be purchased without a prescription, Limited Over-the-Counter Drugs — can be purchased freely with certain restrictions, Prescription Drugs — can only be purchased with a prescription, Consumer Products — not prescription drugs (such as mild itch ointments, etc.).
-                6. General Indications: General uses of the object, namely to treat certain symptoms or diseases.
+                4. Side Effects: Side effects that may arise after taking the drug.
+                5. Category: Legal category of the drug, it must only include: Over-the-Counter Drugs, Limited Over-the-Counter Drugs, Prescription Drugs, Consumer Products and nothing else since it's a categorycal fact.
+                6. General Indications: General uses of the drug, namely to treat certain symptoms or diseases.
                 7. Shape and size: The shape and size of the product packaging (eg: Box, Bottle @ 15 ml).
-                8. Composition: The content or active substance in the object.
-                9. Contraindications: Situations or conditions that prevent the object from being used (eg: severe liver dysfunction).
-                10. Manufacturer: The name of the company or factory that produces the object.
-                11. Warning: Special warnings before using this object, such as prohibitions on use in certain conditions.
-                12. Description: A brief explanation of the object in general, often including the purpose and how the drug works.
+                8. Composition: The content or active substance in the drug.
+                9. Contraindications: Situations or conditions that prevent the drug from being used (eg: severe liver dysfunction).
+                10. Manufacturer: The name of the company or factory that produces the drug.
+                11. Warning: Special warnings before using this drug, such as prohibitions on use in certain conditions, how to handle the drug, and doctor prescription requirements.
+                12. Description: A brief explanation of the drug in general, often including the purpose and how the drug works.
 
                 Example:
                 Apa efek samping, aturan pakai, dan siapa yang membuat obat untuk meredakan demam yang bernama panadol.
@@ -56,11 +56,11 @@ def identify_facts(llm, query):
                 2. Identify the type of informations desired by the user and explain your reasoning. if there is no information desired by the user then keep it empty. In this case, because the user asks for side effects, instructions, and who makes it, the type of informations desired is [Side Effects, Instructions, Manufacturer].
                 3. Identify the information provided by the user that can help identify the object the user is referring to complete it with a verb. In this case, because the user mentioned that the medicine can relieve fever and is called panadol, the information that can help identify the medicine is [medicine to relieve fever, medicine called panadol]
                 4. Determine the type of informations and explain your reasoning from the information that has been identified by looking at the explanation of the 12 types of information if the information doesn't fit with the 12 mentioned then don't list it. Make sure the user is sure of the informations and the user's intention is not to confirm the informations. Because the information 'medicine to relieve fever' is the general use of the medicine and the information 'medicine called panadol' is the name of the medicine, the type of each information is [to relieve fever: General Indications, panadol: Drug Name].
-                5. Create a dictionary that contains the type of fact the user wants, the type of fact and the fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'to relieve fever', 'Object Name': 'panadol'}}
-                6. Translate the information (not the type) provided by the user into indonesian again but not the desired fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Object Name': 'panadol'}}
+                5. Create a dictionary that contains the type of fact the user wants, the type of fact and the fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'to relieve fever', 'Drug Name': 'panadol'}}
+                6. Translate the information (not the type) provided by the user into indonesian again but not the desired fact. In this case {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Drug Name': 'panadol'}}
                 7. Remember not to include notes or additions to the output, it must remain a dictionary.
 
-                Output: {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Object Name': 'panadol'}}
+                Output: {'Desired fact': ['Side Effects', 'Instructions', 'Manufacturer'], 'Fact provided': {'General Indications': 'untuk meredakan demam', 'Drug Name': 'panadol'}}
                 Final output format: JSON-style dictionary as above.
                 Do not answer the user's question, just identify the informations.
             """
@@ -68,20 +68,19 @@ def identify_facts(llm, query):
             "role": "user",
             "content": query
         }],
-        model="llama3-8b-8192",
+        model="llama-3.1-8b-instant",
         temperature=0,
     )
 
-    answer = query_result.choices[0].message.content
-    print(answer)
-    answer = re.findall(r"\{.*?\}(?=(?:\n|$))", answer, re.DOTALL)[-1]
+    answer = query_result.choices[0].message.content 
+    answer = re.findall(r"\{.*?\}(?=(?:\n|$|\.))", answer, re.DOTALL)[-1]
     answer = ast.literal_eval(answer)
 
     desired_fact = answer["Desired fact"]
     fact_provided = answer["Fact provided"]
 
     dct = {
-        "Object Name": "Nama Obat",
+        "Drug Name": "Nama Obat",
         "Instructions": "Aturan Pakai",
         "Dosage": "Dosis",
         "Side Effects": "Efek Samping",
@@ -124,6 +123,28 @@ def hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fa
     ]
 
     return retrieved_docs
+
+def _retrieve_or_not_(state: State, config: dict):
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful assistant. Identify if a user is asking for for information about medical object or not. If so respond only with 'yes', or 'no' if not."),
+        ("human", "Query: {question}")
+    ])
+    messages = prompt.invoke({
+        "question": state["question"]
+    })
+    response = config["configurable"]["llm"].invoke(messages)
+    if 'yes' in response.content:
+        return 'identify_facts'
+    else:
+        return 'answer_non_medical'
+    
+def _answer_non_medical_(state: State, config: dict):
+    return {"answer": """
+        🌟 Hai, aku MediBot! 🩺✨
+        Aku adalah teman kecilmu yang siap membantu menjawab pertanyaan seputar kesehatan. Aku bisa menjelaskan istilah medis yang membingungkan, membantu kamu memahami gejala, penyakit, atau pengobatan — semuanya dengan bahasa yang mudah dimengerti (dan tentu saja, dengan sentuhan imut! 🐻💊).
+        Bayangkan aku seperti teman ngobrol yang selalu siap menemani kamu saat penasaran, bingung, atau butuh informasi tentang kesehatan. 💬💙
+        Yuk, tanya-tanya aja! Aku siap bantu dengan senyum dan semangat seperti vitamin C! 🍊😄
+    """}
 
 def _no_fact_(state: State, config: dict):
     question = interrupt("Adakah deskripsi yang dapat membantu saya untuk mencari obat yang ada maksud?")
@@ -170,14 +191,17 @@ import uuid
 graph_builder = StateGraph(State)
 
 graph_builder.add_node("identify_fact", _identify_facts_)
+graph_builder.add_node("answer_non_medical", _answer_non_medical_)
 graph_builder.add_node("no_fact", _no_fact_)
 graph_builder.add_node("retrieve", _retrieve_)
 graph_builder.add_node("generate", _generate_)
-graph_builder.add_edge(START, "identify_fact")
+graph_builder.add_conditional_edges(START, _retrieve_or_not_, {"identify_fact": "identify_fact", "answer_non_medical": "answer_non_medical"})
+graph_builder.add_edge("answer_non_medical", END)
 graph_builder.add_conditional_edges("identify_fact", _retrieve_or_ask_again_, {"retrieve": "retrieve", "no_fact": "no_fact"})
 graph_builder.add_edge("no_fact", "identify_fact")
 graph_builder.add_edge("retrieve", "generate")
 graph_builder.add_edge("generate", END)
+
 client = MongoClient("mongodb://localhost:27017")
 db = client["langgraph"]
 collection = db["checkpoints"]
@@ -192,19 +216,21 @@ def resume_qa(question, graph, config):
     result = graph.invoke(Command(resume=question), config=config)
     return result
 
-def init_components():
+def init_components(df_path, embedding_db_path, embedding_model=None, embedding_model_path=None):
     load_dotenv()
-    df = pd.read_csv("./app/chatbot/scrapping_auto_df.csv")
+    df = pd.read_csv(df_path) #./app/chatbot/scrapping_auto_df.csv
     col_to_embed = [
         "Aturan Pakai", "Dosis", "Efek Samping", "Golongan Produk", "Indikasi Umum",
         "Kemasan", "Komposisi", "Kontra Indikasi", "Perhatian", "Deskripsi"
     ]
     create_retriever = CreateRetriever(df, col_to_embed)
     lexical_retrievers = create_retriever.create_lexical_retriever()
-    semantic_retriever = create_retriever.create_semantic_retriever("./app/chatbot/halodoc_db", "intfloat/multilingual-e5-large-instruct")
-    # semantic_retriever = create_retriever.create_semantic_retriever("./app/chatbot/halodoc_db", "./app/chatbot/embedding_model/e5")
+    if embedding_model_path:
+        semantic_retriever = create_retriever.create_semantic_retriever(embedding_db_path, embedding_model_path) #./app/chatbot/halodoc_db || ./app/chatbot/embedding_model/e5
+    else:
+        semantic_retriever = create_retriever.create_semantic_retriever(embedding_db_path, embedding_model) #./app/chatbot/halodoc_db || intfloat/multilingual-e5-large-instruct
     query_llm = Groq(api_key=os.getenv("GROQ_KEY"))
-    llm = ChatGroq(model="llama3-8b-8192", temperature=0, api_key=os.getenv("GROQ_KEY"))
+    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, api_key=os.getenv("GROQ_KEY"))
     return df, lexical_retrievers, semantic_retriever, query_llm, llm
 
 
