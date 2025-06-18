@@ -46,6 +46,8 @@ backend/app/chatbot/embedding_model
 backend/app/chatbot/halodoc_db
 backend/app/chatbot/chatbot_test.ipynb
 backend/app/chatbot/ground_truth.csv
+backend/app/chatbot/data_rapi.csv
+backend/app/chatbot/pred.csv
 
 # ========== GLOBAL (umum) ==========
 *.pyc

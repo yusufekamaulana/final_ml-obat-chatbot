@@ -9,7 +9,7 @@ from app.models.chat_model import ChatMessage
 from app.database import db
 from app.utils.security import get_current_user
 
-df, lexical_retrievers, semantic_retriever, query_llm, llm = init_components()
+df, lexical_retrievers, semantic_retriever, query_llm, llm = init_components("./app/chatbot/scrapping_auto_df.csv", "./app/chatbot/halodoc_db", embedding_model="intfloat/multilingual-e5-large-instruct")#./app/chatbot/halodoc_db || intfloat/multilingual-e5-large-instruct
 
 router = APIRouter()
 chat_collection = db["chat_history"]
