@@ -199,7 +199,7 @@ def hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fa
 
 def _retrieve_or_not_(state: State, config: dict):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant. Identify if a user is asking for for information about medical object or not. If so respond only with 'yes', or 'no' if not."),
+        ("system", "You are a helpful assistant. Identify if a user is asking for for information about medical object or not. If so respond only with 'yes', or 'no' if not or if you are not sure don't answer anything else."),
         ("human", "Query: {question}")
     ])
     messages = prompt.invoke({
@@ -207,7 +207,7 @@ def _retrieve_or_not_(state: State, config: dict):
     })
     response = config["configurable"]["llm"].invoke(messages)
     print(response.content)
-    if ('yes' in response.content.lower()) or ('ya' in response.content.lower()):
+    if (response.content.lower() == 'yes') or (response.content.lower() == 'ya'):
         return 'identify_facts'
     else:
         return 'answer_non_medical'
