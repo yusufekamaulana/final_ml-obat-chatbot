@@ -25,7 +25,7 @@ export function ChatbotLayout() {
     typeof window !== "undefined" ? getCookie("token") : null
 
   useEffect(() => {
-    const savedThreadId = localStorage.getItem("threadId")
+    const savedThreadId = sessionStorage.getItem("threadId")
     if (savedThreadId) {
       setThreadId(savedThreadId)
     }
@@ -72,16 +72,19 @@ export function ChatbotLayout() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ query: input }),
+        body: JSON.stringify({ query: input, threadid: threadId }),
       })
+      console.log("data:", data);
 
       if (data.thread_id) {
         setThreadId(data.thread_id)
-        localStorage.setItem("threadId", data.thread_id)
+        sessionStorage.setItem("threadId", data.thread_id)
       } else {
         setThreadId(null)
-        localStorage.removeItem("threadId")
+        sessionStorage.removeItem("threadId")
       }
+
+      console.log(threadId);
 
       const botMessage: Message = {
         id: crypto.randomUUID(),
