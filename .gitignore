@@ -48,6 +48,8 @@ backend/app/chatbot/chatbot_test.ipynb
 backend/app/chatbot/ground_truth.csv
 backend/app/chatbot/data_rapi.csv
 backend/app/chatbot/pred.csv
+backend/app/chatbot/eval_ril.csv
+backend/app/chatbot/eval_bodong.csv
 
 # ========== GLOBAL (umum) ==========
 *.pyc

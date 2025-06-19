@@ -25,6 +25,7 @@ class State(TypedDict):
     answer: str
     desired_fact: Dict[str, List[str]]
     fact_provided: Dict[str, str]
+    resume: str
 
 def identify_facts(llm, query):
     query_result = llm.chat.completions.create(
@@ -214,7 +215,7 @@ def hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fa
 
 def _retrieve_or_not_(state: State, config: dict):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant. Identify if a user is asking for for information about medical object or not. If so respond only with 'yes', or 'no' if not or if you are not sure don't answer anything else."),
+        ("system", "You are a helpful assistant. Identify if a user is asking for information about medical object or not. If so respond only with 'yes', or 'no' if not or if you are not sure don't answer anything else."),
         ("human", "Query: {question}")
     ])
     messages = prompt.invoke({
@@ -275,18 +276,33 @@ def _generate_(state: State, config: dict):
 
 def _ask_validation_(state: State, config: dict):
     answer = interrupt("ask_revision")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful assistant. Identify if a user is asking for information about medical object or not. If so respond only with 'yes', or 'no' if not or if you are not sure don't answer anything else."),
+        ("human", "Query: {question}")
+    ])
+    messages = prompt.invoke({
+        "question": answer
+    })
+    response = config["configurable"]["llm"].invoke(messages)
 
     if answer == "tidak":
-        return "validate"
+        return {"resume": "validate"}
+    elif (response.content.lower() == 'yes') or (response.content.lower() == 'ya'):
+        return {"resume": "identify_facts", "question": prompt}
     else:
-        state["answer"] = "🌟 Terima kasih sudah ngobrol bareng MediBot! 🩺💙"
-        return "end"
+        return {"resume": "thank_you"}
+    
+def _resume_(state: State, config: dict):
+    return state["resume"]
     
 def _validate_(state: State, config: dict):
     revised = interrupt("input_revision")
     query_llm = config["configurable"]["query_llm"]
     fact_provided = revise_facts(query_llm, state["fact_provided"], revised)
     return {"question": revised, "fact_provided": fact_provided}
+
+def _thank_you_(state: State, config: dict):
+    return {"answer": "🌟 Terima kasih sudah ngobrol bareng MediBot! 🩺💙"}
 
 from langgraph.graph import START, StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -299,14 +315,18 @@ graph_builder.add_node("answer_non_medical", _answer_non_medical_)
 graph_builder.add_node("no_fact", _no_fact_)
 graph_builder.add_node("retrieve", _retrieve_)
 graph_builder.add_node("generate", _generate_)
+graph_builder.add_node("ask_validation", _ask_validation_)
 graph_builder.add_node("validate", _validate_)
+graph_builder.add_node("thank_you", _thank_you_)
 graph_builder.add_conditional_edges(START, _retrieve_or_not_, {"identify_facts": "identify_facts", "answer_non_medical": "answer_non_medical"})
 graph_builder.add_edge("answer_non_medical", END)
 graph_builder.add_conditional_edges("identify_facts", _retrieve_or_ask_again_, {"retrieve": "retrieve", "no_fact": "no_fact"})
 graph_builder.add_edge("no_fact", "identify_facts")
 graph_builder.add_edge("retrieve", "generate")
-graph_builder.add_conditional_edges("generate", _ask_validation_, {"validate": "validate", "end": END})
+graph_builder.add_edge("generate", "ask_validation")
+graph_builder.add_conditional_edges("ask_validation", _resume_, {"validate": "validate", "identify_facts": "identify_facts", "thank_you": "thank_you"})
 graph_builder.add_edge("validate", "retrieve")
+graph_builder.add_edge("thank_you", END)
 
 client = MongoClient("mongodb://localhost:27017")
 db = client["langgraph"]
