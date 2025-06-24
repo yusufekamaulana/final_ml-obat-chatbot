@@ -3,6 +3,9 @@ from app.chatbot.chatbot_utils import *
 import ast
 import regex as re
 import argparse
+import functools
+import traceback
+
 from dotenv import load_dotenv
 
 from langchain_core.documents import Document
@@ -19,6 +22,17 @@ from langchain_core.runnables import RunnablePassthrough
 
 from pymongo import MongoClient
 
+def error_handler(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            print(f"[ERROR] Exception in function: {func.__name__}")
+            traceback.print_exc()
+            return {"failed": func.__name__}  # Special signal
+    return wrapper
+
 class State(TypedDict):
     question: str
     context: List[Document]
@@ -26,8 +40,11 @@ class State(TypedDict):
     desired_fact: Dict[str, List[str]]
     fact_provided: Dict[str, str]
     resume: str
+    error_log: str
 
+@error_handler
 def identify_facts(llm, query):
+    print(f"hi_{query}")
     query_result = llm.chat.completions.create(
         messages=[{
             "role": "system",
@@ -99,6 +116,7 @@ def identify_facts(llm, query):
 
     return desired_fact, fact_provided
 
+@error_handler
 def revise_facts(llm, fact_provided, query):
     rev_dct = {
         "Nama Obat": "Drug Name",
@@ -187,6 +205,7 @@ def revise_facts(llm, fact_provided, query):
 
     return fact_provided
 
+@error_handler
 def hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fact_provided, k):
     jaro_winkler_ranking = JaroWinklerRanking(df)
     lexical_ranking = LexicalRanking(lexical_retrievers, df)
@@ -242,14 +261,15 @@ def _no_fact_(state: State, config: dict):
 
 def _identify_facts_(state: State, config: dict):
     query_llm = config["configurable"]["query_llm"]
-    desired_fact, fact_provided = identify_facts(query_llm, state["question"])
-    return {"desired_fact": desired_fact, "fact_provided": fact_provided}
-
-def _retrieve_or_ask_again_(state: State, config: dict):
-    if len(state["fact_provided"]) == 0:
-        return "no_fact"
+    result = identify_facts(query_llm, state["question"])
+    if isinstance(result, dict):
+        if "failed" in result.keys():
+            return {"resume": "error", "error_log": result["failed"]}
+    desired_fact, fact_provided = result
+    if len(fact_provided) == 0:
+        return {"resume": "no_fact", "desired_fact": desired_fact, "fact_provided": fact_provided}
     else:
-        return "retrieve"
+        return {"resume": "retrieve", "desired_fact": desired_fact, "fact_provided": fact_provided}
 
 def _retrieve_(state: State, config: dict):
     df = config["configurable"]["df"]
@@ -257,8 +277,12 @@ def _retrieve_(state: State, config: dict):
     semantic_retriever = config["configurable"]["semantic_retriever"]
     desired_fact = state["desired_fact"]
     fact_provided = state["fact_provided"]
-    retrieved_docs = hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fact_provided, 10)
-    return {"context": retrieved_docs}
+    result = hybrid_retrieve(df, lexical_retrievers, semantic_retriever, desired_fact, fact_provided, 10)
+    if isinstance(result, dict):
+        if "failed" in result.keys():
+            return {"resume": "error", "error_log": result["failed"]}
+    retrieved_docs = result
+    return {"resume": "generate", "context": retrieved_docs}
 
 
 def _generate_(state: State, config: dict):
@@ -288,7 +312,7 @@ def _ask_validation_(state: State, config: dict):
     if answer == "tidak":
         return {"resume": "validate"}
     elif (response.content.lower() == 'yes') or (response.content.lower() == 'ya'):
-        return {"resume": "identify_facts", "question": prompt}
+        return {"resume": "identify_facts", "question": answer}
     else:
         return {"resume": "thank_you"}
     
@@ -298,11 +322,21 @@ def _resume_(state: State, config: dict):
 def _validate_(state: State, config: dict):
     revised = interrupt("input_revision")
     query_llm = config["configurable"]["query_llm"]
-    fact_provided = revise_facts(query_llm, state["fact_provided"], revised)
-    return {"question": revised, "fact_provided": fact_provided}
+    result = revise_facts(query_llm, state["fact_provided"], revised)
+    if isinstance(result, dict):
+        if "failed" in result.keys():
+            return {"resume":"error", "error_log": result["failed"]}
+    fact_provided = result
+    if len(fact_provided) == 0:
+        return {"resume": "no_fact", "question": revised, "fact_provided": fact_provided}
+    else:
+        return {"resume": "retrieve", "question": revised, "fact_provided": fact_provided}
 
 def _thank_you_(state: State, config: dict):
     return {"answer": "🌟 Terima kasih sudah ngobrol bareng MediBot! 🩺💙"}
+
+def _error_(state: State, config:dict):
+    return {"answer": "Maaf kami tidak menemukan obat yang kamu maksud"}
 
 from langgraph.graph import START, StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -318,14 +352,16 @@ graph_builder.add_node("generate", _generate_)
 graph_builder.add_node("ask_validation", _ask_validation_)
 graph_builder.add_node("validate", _validate_)
 graph_builder.add_node("thank_you", _thank_you_)
+graph_builder.add_node("error", _error_)
 graph_builder.add_conditional_edges(START, _retrieve_or_not_, {"identify_facts": "identify_facts", "answer_non_medical": "answer_non_medical"})
 graph_builder.add_edge("answer_non_medical", END)
-graph_builder.add_conditional_edges("identify_facts", _retrieve_or_ask_again_, {"retrieve": "retrieve", "no_fact": "no_fact"})
+graph_builder.add_conditional_edges("identify_facts", _resume_, {"retrieve": "retrieve", "no_fact": "no_fact", "error": "error"})
 graph_builder.add_edge("no_fact", "identify_facts")
-graph_builder.add_edge("retrieve", "generate")
+graph_builder.add_conditional_edges("retrieve", _resume_, {"generate": "generate", "error": "error"})
 graph_builder.add_edge("generate", "ask_validation")
 graph_builder.add_conditional_edges("ask_validation", _resume_, {"validate": "validate", "identify_facts": "identify_facts", "thank_you": "thank_you"})
-graph_builder.add_edge("validate", "retrieve")
+graph_builder.add_conditional_edges("validate", _resume_, {"retrieve": "retrieve", "no_fact": "no_fact", "error": "error"})
+graph_builder.add_edge("error", END)
 graph_builder.add_edge("thank_you", END)
 
 client = MongoClient("mongodb://localhost:27017")

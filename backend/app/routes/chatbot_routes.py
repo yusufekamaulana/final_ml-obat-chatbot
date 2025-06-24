@@ -1,3 +1,6 @@
+import pandas as pd
+import os
+
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -89,6 +92,14 @@ async def ask_chatbot(
 
     print(config["configurable"]["thread_id"])
     print(result)
+
+    if "error_log" in result.keys():
+        state = {k: v for k, v in result.items() if (k != "error_log") and (k != "context")}
+        error_log = pd.DataFrame({"state": [result], "error": [result["error_log"]]})
+        error_log.to_csv("./app/chatbot/error_log.csv", mode="a", index=False, header=not os.path.exists("./app/chatbot/error_log.csv"))
+        return {
+            "answer": result["answer"]
+        }
 
     if "__interrupt__" in result.keys():
         if result["__interrupt__"][0].value == "no_fact":

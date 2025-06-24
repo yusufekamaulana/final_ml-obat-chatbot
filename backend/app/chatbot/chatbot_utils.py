@@ -21,15 +21,27 @@ class JaroWinklerRanking():
     def rank(self, query_dict):
         for query_type, query in query_dict.items():
             if query_type in ["Nama Obat", "Manufaktur"]:
-                results = self.doc_df[[query_type]].copy()
-                results["score"] = results[query_type].apply(lambda x: JaroWinkler.similarity(x, query))
-                results_id = results.sort_values(by="score", ascending=False).index.to_list()
-                results_score = results.sort_values(by="score", ascending=False)["score"].to_list()
+                if isinstance(query, list):
+                    for i, item in enumerate(query):
+                        results = self.doc_df[[query_type]].copy()
+                        results["score"] = results[query_type].apply(lambda x: JaroWinkler.similarity(x, item))
+                        results_id = results.sort_values(by="score", ascending=False).index.to_list()
+                        results_score = results.sort_values(by="score", ascending=False)["score"].to_list()
 
-                col_df = pd.DataFrame({"id": results_id, f"{query_type}_score": results_score})
-                col_df["id"] = col_df["id"].astype(int)
-                self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
-                self.df[f"{query_type}_score"] = self.df[f"{query_type}_score"].fillna(self.df[f"{query_type}_score"].min())
+                        col_df = pd.DataFrame({"id": results_id, f"{query_type}_{i}_score": results_score})
+                        col_df["id"] = col_df["id"].astype(int)
+                        self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                        self.df[f"{query_type}_{i}_score"] = self.df[f"{query_type}_{i}_score"].fillna(self.df[f"{query_type}_{i}_score"].min())
+                else:
+                    results = self.doc_df[[query_type]].copy()
+                    results["score"] = results[query_type].apply(lambda x: JaroWinkler.similarity(x, query))
+                    results_id = results.sort_values(by="score", ascending=False).index.to_list()
+                    results_score = results.sort_values(by="score", ascending=False)["score"].to_list()
+
+                    col_df = pd.DataFrame({"id": results_id, f"{query_type}_score": results_score})
+                    col_df["id"] = col_df["id"].astype(int)
+                    self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                    self.df[f"{query_type}_score"] = self.df[f"{query_type}_score"].fillna(self.df[f"{query_type}_score"].min())
 
         rank_df = self.df.copy()
         rank_df["jaro_winkler_rank"] = rank_df.apply(lambda x: sum(x[col] for col in rank_df.columns if "score" in col) / len(query_dict), axis=1).rank(ascending=False, method="min")
@@ -47,13 +59,23 @@ class LexicalRanking():
     def rank(self, query_dict):
         for query_type, query in query_dict.items():
             if query_type not in ["Nama Obat", "Manufaktur"]:
-                results = self.retrievers[query_type].invoke(query)
-                results_id = [result.metadata["doc_id"] for result in results]
-                results_rank = [i for i in range(1, self.doc_len + 1)]
+                if isinstance(query, list):
+                    for i, item in enumerate(query):
+                        results = self.retrievers[query_type].invoke(item)
+                        results_id = [result.metadata["doc_id"] for result in results]
+                        results_rank = [i for i in range(1, self.doc_len + 1)]
 
-                col_df = pd.DataFrame({"id": results_id, f"{query_type}_rank": results_rank})
-                col_df["id"] = col_df["id"].astype(int)
-                self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                        col_df = pd.DataFrame({"id": results_id, f"{query_type}_{i}_rank": results_rank})
+                        col_df["id"] = col_df["id"].astype(int)
+                        self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                else:
+                    results = self.retrievers[query_type].invoke(query)
+                    results_id = [result.metadata["doc_id"] for result in results]
+                    results_rank = [i for i in range(1, self.doc_len + 1)]
+
+                    col_df = pd.DataFrame({"id": results_id, f"{query_type}_rank": results_rank})
+                    col_df["id"] = col_df["id"].astype(int)
+                    self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
 
         rank_df = ReciprocalRankFusion(self.df, 60, "lexical_rank")
 
@@ -69,14 +91,25 @@ class SemanticRanking():
     def rank(self, query_dict):
         for query_type, query in query_dict.items():
             if query_type not in ["Nama Obat", "Manufaktur"]:
-                results = self.retriever.similarity_search_with_relevance_scores(query, filter={"column": query_type}, k=self.doc_len)
-                results_id = [result[0].metadata["doc_id"] for result in results]
-                results_score = [result[1] for result in results]
+                if isinstance(query, list):
+                    for i, item in enumerate(query):
+                        results = self.retriever.similarity_search_with_relevance_scores(item, filter={"column": query_type}, k=self.doc_len)
+                        results_id = [result[0].metadata["doc_id"] for result in results]
+                        results_score = [result[1] for result in results]
 
-                col_df = pd.DataFrame({"id": results_id, f"{query_type}_score": results_score})
-                col_df["id"] = col_df["id"].astype(int)
-                self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
-                self.df[f"{query_type}_score"] = self.df[f"{query_type}_score"].fillna(self.df[f"{query_type}_score"].min())
+                        col_df = pd.DataFrame({"id": results_id, f"{query_type}_{i}_score": results_score})
+                        col_df["id"] = col_df["id"].astype(int)
+                        self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                        self.df[f"{query_type}_{i}_score"] = self.df[f"{query_type}_{i}_score"].fillna(self.df[f"{query_type}_{i}_score"].min())
+                else:
+                    results = self.retriever.similarity_search_with_relevance_scores(query, filter={"column": query_type}, k=self.doc_len)
+                    results_id = [result[0].metadata["doc_id"] for result in results]
+                    results_score = [result[1] for result in results]
+
+                    col_df = pd.DataFrame({"id": results_id, f"{query_type}_score": results_score})
+                    col_df["id"] = col_df["id"].astype(int)
+                    self.df = pd.merge(left=self.df, right=col_df, how="left", on="id")
+                    self.df[f"{query_type}_score"] = self.df[f"{query_type}_score"].fillna(self.df[f"{query_type}_score"].min())
 
         rank_df = self.df.copy()
         rank_df["semantic_rank"] = rank_df.apply(lambda x: sum(x[col] for col in rank_df.columns if "score" in col) / len(query_dict), axis=1).rank(ascending=False, method="min")
